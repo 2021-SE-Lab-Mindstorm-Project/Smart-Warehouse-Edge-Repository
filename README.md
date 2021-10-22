@@ -5,16 +5,14 @@ The edge server for repository system has two components, messaging system, and 
 ### Messaging System
 Messaging system gets the messages using Django REST framework.
 Messages from the others are considered as a data that can be stores in this edge server.
-Here are the lists of the messages that edge server receives.
+Here are the lists of the messages that edge server receives and send.
 
-* Check capacity request (Repository Machines)
+* Check capacity request (Repository Machines) -> Order processed (Cloud, Classification Edge)
 * Order processed acknowledgement (Shipment Edge)
 * Data of the orders (Cloud)
-* Store sensory data (Repository Machines)
+* Store sensory data (Repository Machines) -> Store sensory data (Cloud, every 15s)
   * `/sensory/` with `post` method
-
-For every 15 seconds, the classification machine sends the sensory data to the cloud server.
-You can change the settings in `CRONJOBS` of `edge_classification/edge_repository/settings.py`.
+  * You can change the settings in `CRONJOBS` of `edge_repository/edge_repository/settings.py`.
 
 
 ### Database
@@ -22,7 +20,7 @@ Database is based on the SQLite 3, with django. Here are the databases of the cl
 ### Inventory
 |Fields|Type|Choices|
 |-------|-----|-----|
-|item_type|Char|Red, White, Yellow, Shipment|
+|item_type|Int|Red(1), White(2), Yellow(3), Shipment(4)|
 |value|Int||
 |updated|Datetime||
 
@@ -30,7 +28,7 @@ Database is based on the SQLite 3, with django. Here are the databases of the cl
 |Fields|Type|Choices|
 |-------|-----|-----|
 |made|Datetime||
-|item_type|Char|Red, White, Yellow|
+|item_type|Int|Red(1), White(2), Yellow(3)|
 
 ### Sensory
 |Fields|Type|Choices|
