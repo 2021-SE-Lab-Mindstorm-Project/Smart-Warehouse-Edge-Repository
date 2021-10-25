@@ -3,5 +3,5 @@
   "timezone": "Asia/Seoul",
   "cloud_address": "http://169.56.76.12",
   "edge_classification_address": "http://143.248.41.212",
-  "maximum_capacity_shipment": 10
+  "max_capacity_shipment": 10
 }

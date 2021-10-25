@@ -1,3 +1,4 @@
+import json
 import time
 
 import requests
@@ -12,14 +13,16 @@ def cron_task(function, seconds):
 
 
 def send_sensory():
-    target_data = Sensory.objects.filter(id__gt=settings['sensory'])
+    target_data = Sensory.objects.filter(uploaded=False)
 
     if len(target_data) > 0:
-        settings['sensory'] = target_data[-1].id
-
         list_of_data = []
         for data in target_data:
-            list_of_data.append({'sensorID': data.sensorID, 'value': data.value, 'datetime': data.datetime})
+            list_of_data.append({'sensorID': data.sensorID, 'value': data.value, 'datetime': str(data.datetime)})
+            data.uploaded = True
+            data.save()
 
-        print(requests.post(settings['cloud_address'] + '/api/sensory/', data=list_of_data).json())
+        json_list = json.dumps(list_of_data)
+        headers = {"Content-type": "application/json"}
 
+        requests.post(settings['cloud_address'] + '/api/sensory/', data=json_list, headers=headers)

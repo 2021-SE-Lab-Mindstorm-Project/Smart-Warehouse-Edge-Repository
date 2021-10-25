@@ -26,7 +26,7 @@ dest_choices = [
 class Inventory(models.Model):
     item_type = models.IntegerField(choices=item_type_choices)
     value = models.IntegerField()
-    updated = models.DateTimeField()
+    updated = models.DateTimeField(auto_now=datetime.datetime.now)
 
 
 class Order(models.Model):
@@ -38,6 +38,7 @@ class Sensory(models.Model):
     sensorID = models.CharField(max_length=50)
     value = models.FloatField()
     datetime = models.DateTimeField()
+    uploaded = models.BooleanField(default=False)
 
 
 USER = 0
@@ -68,5 +69,10 @@ sender_choices = [
 class Message(models.Model):
     sender = models.IntegerField(choices=sender_choices)
     title = models.CharField(default='', max_length=50)
-    msg = models.TextField(default='')
+    msg = models.TextField(default='', blank=True, null=True)
     datetime = models.DateTimeField(default=datetime.datetime.now)
+
+
+class Status(models.Model):
+    status = models.BooleanField(default=False)
+    updated = models.DateTimeField(auto_now=datetime.datetime.now)
