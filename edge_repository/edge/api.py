@@ -52,35 +52,30 @@ def find_best_order():
     if len(orders) == 0:
         return None
 
-    inventory = Inventory.objects.all()
+    store_1_objects = Inventory.objects.filter(stored=1)
+    store_2_objects = Inventory.objects.filter(stored=2)
+    store_3_objects = Inventory.objects.filter(stored=3)
 
-    i = 0
-    while i < len(orders):
-        target_item_type = orders[i].item_type
-        if inventory[target_item_type - 1].value != 0:
-            return orders[i]
-        i += 1
+    for order in orders:
+        if len(store_1_objects) > 0 and order.item_type == store_1_objects[0].item_type:
+            return order
+
+        if len(store_2_objects) > 0 and order.item_type == store_2_objects[0].item_type:
+            return order
+
+        if len(store_3_objects) > 0 and order.item_type == store_3_objects[0].item_type:
+            return order
 
     return None
-
-
-def initialize_inventory():
-    Inventory.objects.all().delete()
-    red_inventory = Inventory(item_type=1, value=0)
-    white_inventory = Inventory(item_type=2, value=0)
-    yellow_inventory = Inventory(item_type=3, value=0)
-    shipment_inventory = Inventory(item_type=0, value=0)
-
-    red_inventory.save()
-    white_inventory.save()
-    yellow_inventory.save()
-    shipment_inventory.save()
 
 
 class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
     http_method_names = ['post']
+    shipment_capacity = 0
+    selected_time = datetime.datetime.now()
+    best_order = None
 
     @swagger_auto_schema(
         responses={400: "Bad request", 204: "Invalid Message Title / Invalid Message Sender / Not allowed"})
@@ -102,27 +97,28 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response("Not allowed", status=204)
 
             if title == 'Sending Check':
-                item_type = sender - models.MACHINE_REPOSITORY_1 + 1
-                target_order = find_best_order()
+                stored = sender - models.MACHINE_REPOSITORY_1 + 1
+                first_item = Inventory.objects.filter(stored=stored)[0]
 
-                if target_order is not None and item_type == target_order.item_type:
-                    capacity_check = Inventory.objects.filter(item_type=models.SHIPMENT)[0]
-                    if capacity_check.value < settings['max_capacity_shipment']:
-                        target_order.delete()
+                if self.selected_time + datetime.timedelta(minutes=1) < datetime.datetime.now():
+                    self.best_order = find_best_order()
+                    self.selected_time = datetime.datetime.now()
 
-                        capacity_check.value += 1
-                        capacity_check.save()
-
-                        item_type = sender - models.MACHINE_REPOSITORY_1 + 1
-                        inventory_check = Inventory.objects.filter(item_type=item_type)[0]
-                        inventory_check.value -= 1
-                        inventory_check.save()
+                if self.best_order is not None and self.best_order.item_type == first_item.item_type:
+                    if self.shipment_capacity < settings['max_capacity_shipment']:
+                        self.shipment_capacity += 1
 
                         process_message = {'sender': models.EDGE_REPOSITORY,
                                            'title': 'Order Processed',
-                                           'msg': item_type}
+                                           'msg': json.dumps({'item_type': first_item.item_type,
+                                                              'stored': first_item.stored,
+                                                              'dest': self.best_order.dest})}
                         requests.post(settings['edge_classification_address'] + '/api/message/', data=process_message)
                         requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
+
+                        self.best_order.delete()
+                        self.best_order = None
+                        first_item.delete()
 
                         return Response(status=201)
 
@@ -132,12 +128,12 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         if sender == models.EDGE_CLASSIFICATION:
             if title == 'Classification Processed':
-                item_type = int(request.data['msg'])
+                msg = json.loads(request.data['msg'])
+                item_type = int(msg['item_type'])
+                stored = int(msg['stored'])
 
                 # Modify Inventory DB
-                target_item = Inventory.objects.filter(item_type=item_type)[0]
-                target_item.value += 1
-                target_item.updated = datetime.datetime.now()
+                target_item = Inventory(item_type=item_type, stored=stored)
                 target_item.save()
 
                 return Response(status=201)
@@ -146,9 +142,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         if sender == models.EDGE_SHIPMENT:
             if title == 'Order Processed':
-                capacity_check = Inventory.objects.filter(item_type=models.SHIPMENT)[0]
-                capacity_check.value -= 1
-                capacity_check.save()
+                self.shipment_capacity -= 1
 
                 return Response(status=201)
 
@@ -163,8 +157,9 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response(status=201)
 
             if title == 'Start':
-                initialize_inventory()
+                Inventory.objects.all().delete()
                 Order.objects.all().delete()
+                self.shipment_capacity = 0
 
                 if len(Status.objects.all()) == 0:
                     current_state = Status()
