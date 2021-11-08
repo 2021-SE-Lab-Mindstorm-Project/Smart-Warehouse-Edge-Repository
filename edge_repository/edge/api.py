@@ -68,14 +68,14 @@ def find_best_order():
 
     tactic = int(rl_model.select_tactic(state, available))
     if tactic == 3:
-        return None
+        return None, None
 
     item = Inventory.objects.filter(stored=tactic)[0]
     orders = Order.objects.filter(item_type=item.item_type)
     if len(orders) == 0:
-        return None
+        return None, None
 
-    return orders[0]
+    return orders[0], tactic
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -85,6 +85,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     shipment_capacity = 0
     selected_time = datetime.datetime.now()
     best_order = None
+    best_rep = None
 
     @swagger_auto_schema(
         responses={400: "Bad request", 204: "Invalid Message Title / Invalid Message Sender / Not allowed"})
@@ -110,10 +111,10 @@ class MessageViewSet(viewsets.ModelViewSet):
                 first_item = Inventory.objects.filter(stored=stored)[0]
 
                 if self.selected_time + datetime.timedelta(minutes=1) < datetime.datetime.now():
-                    self.best_order = find_best_order()
+                    self.best_order, self.best_rep = find_best_order()
                     self.selected_time = datetime.datetime.now()
 
-                if self.best_order is not None and self.best_order.item_type == first_item.item_type:
+                if self.best_rep is not None and self.best_rep + 1 == stored:
                     if self.shipment_capacity < settings['max_capacity_shipment']:
                         self.shipment_capacity += 1
 
@@ -132,6 +133,36 @@ class MessageViewSet(viewsets.ModelViewSet):
                         return Response(status=201)
 
                 return Response("Not allowed", status=204)
+
+            if title == 'Anomaly Occurred':
+                location = sender - models.MACHINE_REPOSITORY_1
+                if location == 2:
+                    location = 1
+
+                anomaly[location] = True
+
+                process_message = {'sender': models.EDGE_REPOSITORY,
+                                   'title': 'Anomaly Occurred',
+                                   'msg': location}
+                requests.post(settings['edge_classification_address'] + '/api/message/', data=process_message)
+                requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
+
+                return Response(status=201)
+
+            if title == 'Anomaly Solved':
+                location = sender - models.MACHINE_REPOSITORY_1
+                if location == 2:
+                    location = 1
+
+                anomaly[location] = False
+
+                process_message = {'sender': models.EDGE_REPOSITORY,
+                                   'title': 'Anomaly Solved',
+                                   'msg': location}
+                requests.post(settings['edge_classification_address'] + '/api/message/', data=process_message)
+                requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
+
+                return Response(status=201)
 
             return Response("Invalid Message Title", status=204)
 
