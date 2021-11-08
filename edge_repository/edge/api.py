@@ -7,9 +7,14 @@ from rest_framework import serializers, viewsets
 from rest_framework.response import Response
 
 from edge_repository.settings import settings
-from . import models
+from . import models, rl
 from .models import Sensory, Inventory, Order, Message, Status
 
+if int(settings['anomaly_aware']) == 1:
+    rl_model = rl.DQN(6, path='../../a_rl_r.pth')
+else:
+    rl_model = rl.DQN(4, path='../../rl_r.pth')
+anomaly = [False, False]
 
 # Serializer
 class SensoryListSerializer(serializers.ListSerializer):
@@ -48,25 +53,29 @@ class SensoryViewSet(viewsets.ModelViewSet):
 
 
 def find_best_order():
-    orders = Order.objects.all()
+    state = []
+    available = [True] * 4
+    for i in range(3):
+        stored_items = Inventory.objects.filter(stored=i)
+        if len(stored_items) == 0:
+            state.append(-1)
+            available[i] = False
+        else:
+            state.append(stored_items[0].item_type)
+
+    if settings['anomaly_aware']:
+        state.extend(anomaly)
+
+    tactic = int(rl_model.select_tactic(state, available))
+    if tactic == 3:
+        return None
+
+    item = Inventory.objects.filter(stored=tactic)[0]
+    orders = Order.objects.filter(item_type=item.item_type)
     if len(orders) == 0:
         return None
 
-    store_1_objects = Inventory.objects.filter(stored=1)
-    store_2_objects = Inventory.objects.filter(stored=2)
-    store_3_objects = Inventory.objects.filter(stored=3)
-
-    for order in orders:
-        if len(store_1_objects) > 0 and order.item_type == store_1_objects[0].item_type:
-            return order
-
-        if len(store_2_objects) > 0 and order.item_type == store_2_objects[0].item_type:
-            return order
-
-        if len(store_3_objects) > 0 and order.item_type == store_3_objects[0].item_type:
-            return order
-
-    return None
+    return orders[0]
 
 
 class MessageViewSet(viewsets.ModelViewSet):
