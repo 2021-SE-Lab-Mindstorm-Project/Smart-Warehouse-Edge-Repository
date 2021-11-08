@@ -11,9 +11,9 @@ from . import models, rl
 from .models import Sensory, Inventory, Order, Message, Status
 
 if int(settings['anomaly_aware']) == 1:
-    rl_model = rl.DQN(6, path='../../a_rl_r.pth')
+    rl_model = rl.DQN(5, path='../a_rl_r.pth')
 else:
-    rl_model = rl.DQN(4, path='../../rl_r.pth')
+    rl_model = rl.DQN(3, path='../rl_r.pth')
 anomaly = [False, False]
 
 # Serializer

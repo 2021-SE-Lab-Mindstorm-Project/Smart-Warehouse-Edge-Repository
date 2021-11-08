@@ -5,13 +5,13 @@ from django.db import models
 RED = 1
 WHITE = 2
 YELLOW = 3
-GREEN = 4
+BLUE = 4
 SHIPMENT = 0
 item_type_choices = [
     (RED, 'Red'),
     (WHITE, 'White'),
     (YELLOW, 'Yellow'),
-    (GREEN, 'Green')
+    (BLUE, 'Blue')
 ]
 
 LEFT = 1
