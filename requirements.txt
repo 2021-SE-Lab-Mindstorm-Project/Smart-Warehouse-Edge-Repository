@@ -5,5 +5,3 @@ django-cors-headers~=3.10.0
 django-sslserver~=0.22
 django-crontab~=0.7.1
 requests>=2.26.0
-torch~=1.10.0
-torchvision~=0.11.1

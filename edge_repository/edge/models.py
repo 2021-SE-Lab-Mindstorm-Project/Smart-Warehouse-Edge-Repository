@@ -6,7 +6,6 @@ RED = 1
 WHITE = 2
 YELLOW = 3
 BLUE = 4
-SHIPMENT = 0
 item_type_choices = [
     (RED, 'Red'),
     (WHITE, 'White'),
@@ -14,9 +13,9 @@ item_type_choices = [
     (BLUE, 'Blue')
 ]
 
-LEFT = 1
-MIDDLE = 2
-RIGHT = 3
+LEFT = 0
+MIDDLE = 1
+RIGHT = 2
 dest_choices = [
     (LEFT, 'Left'),
     (MIDDLE, 'Middle'),
