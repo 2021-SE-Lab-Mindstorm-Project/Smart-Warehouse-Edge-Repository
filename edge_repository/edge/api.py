@@ -72,7 +72,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response("Not allowed", status=204)
 
             if title == 'Sending Check':
-                stored = sender - models.MACHINE_REPOSITORY_1 + 1
+                stored = sender - models.MACHINE_REPOSITORY_1
                 first_item = Inventory.objects.filter(stored=stored)[0]
 
                 process_message = {'sender': models.EDGE_REPOSITORY,
