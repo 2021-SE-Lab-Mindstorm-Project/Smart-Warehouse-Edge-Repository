@@ -52,6 +52,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     http_method_names = ['post']
 
+    current_anomaly = [False] * 3
     waited_from = [None] * 3
     recent_order = [None] * 3
     shipment_capacity = 0
@@ -79,6 +80,9 @@ class MessageViewSet(viewsets.ModelViewSet):
                 stored = sender - models.MACHINE_REPOSITORY_1
                 first_item = Inventory.objects.filter(stored=stored)[0]
                 target_orders = Order.objects.filter(item_type=first_item.item_type).order_by('made')
+
+                if self.current_anomaly[stored]:
+                    return Response("Not allowed", status=204)
 
                 if self.shipment_capacity < settings['max_capacity_shipment']:
                     if len(target_orders) == 0:
@@ -109,6 +113,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
             if title == 'Anomaly Occurred':
                 location = sender - models.MACHINE_REPOSITORY_1
+                self.current_anomaly[location] = True
                 if self.recent_order[location] is not None:
                     new_order = Order(item_type=self.recent_order[location][0], made=self.recent_order[location][1])
                     new_order.save()
@@ -122,6 +127,8 @@ class MessageViewSet(viewsets.ModelViewSet):
 
             if title == 'Anomaly Solved':
                 location = sender - models.MACHINE_REPOSITORY_1
+                self.current_anomaly[location] = False
+                self.waited_from[location] = None
                 target_orders = Order.objects.filter(item_type=self.recent_order[location][0]).order_by('made')
 
                 if len(target_orders) != 0:
