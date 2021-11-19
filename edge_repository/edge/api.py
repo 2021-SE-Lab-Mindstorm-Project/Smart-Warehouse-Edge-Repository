@@ -50,6 +50,8 @@ class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
     http_method_names = ['post']
+
+    recent_order = [None] * 3
     shipment_capacity = 0
 
     @swagger_auto_schema(
@@ -74,31 +76,29 @@ class MessageViewSet(viewsets.ModelViewSet):
             if title == 'Sending Check':
                 stored = sender - models.MACHINE_REPOSITORY_1
                 first_item = Inventory.objects.filter(stored=stored)[0]
+                target_orders = Order.objects.filter(item_type=first_item).order_by('made')
 
-                process_message = {'sender': models.EDGE_REPOSITORY,
-                                   'title': 'Calculation Request',
-                                   'msg': ''}
-                response = requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
-                selected = int(response.text)
+                if len(target_orders) > 0 and self.shipment_capacity < settings['max_capacity_shipment']:
+                    target_order = target_orders[0]
+                    self.recent_order[stored] = (target_order.item_type, target_order.made)
+                    self.shipment_capacity += 1
 
-                if stored == selected:
-                    if self.shipment_capacity < settings['max_capacity_shipment']:
-                        self.shipment_capacity += 1
+                    process_message = {'sender': models.EDGE_REPOSITORY,
+                                       'title': 'Order Processed',
+                                       'msg': stored}
+                    requests.post(settings['edge_classification_address'] + '/api/message/', data=process_message)
+                    requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
 
-                        process_message = {'sender': models.EDGE_REPOSITORY,
-                                           'title': 'Order Processed',
-                                           'msg': selected}
-                        requests.post(settings['edge_classification_address'] + '/api/message/', data=process_message)
-                        requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
+                    target_order.delete()
 
-                        first_item.delete()
-
-                        return Response(status=201)
+                    return Response(status=201)
 
                 return Response("Not allowed", status=204)
 
             if title == 'Anomaly Occurred':
                 location = sender - models.MACHINE_REPOSITORY_1
+                new_order = Order(item_type=self.recent_order[location][0], made=self.recent_order[location][1])
+                new_order.save()
 
                 process_message = {'sender': models.EDGE_REPOSITORY,
                                    'title': 'Anomaly Occurred',
@@ -109,6 +109,12 @@ class MessageViewSet(viewsets.ModelViewSet):
 
             if title == 'Anomaly Solved':
                 location = sender - models.MACHINE_REPOSITORY_1
+                target_orders = Order.objects.filter(item_type=self.recent_order[location][0]).order_by('made')
+
+                if len(target_orders) != 0:
+                    target_order = target_orders[0]
+                    target_order.delete()
+
                 process_message = {'sender': models.EDGE_REPOSITORY,
                                    'title': 'Anomaly Solved',
                                    'msg': location}
@@ -151,6 +157,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             if title == 'Start':
                 Inventory.objects.all().delete()
                 Order.objects.all().delete()
+                self.recent_order = [None] * 3
                 self.shipment_capacity = 0
 
                 if len(Status.objects.all()) == 0:
