@@ -1,3 +1,4 @@
+import datetime
 import json
 
 import requests
@@ -51,6 +52,7 @@ class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     http_method_names = ['post']
 
+    waited_from = [None] * 3
     recent_order = [None] * 3
     shipment_capacity = 0
 
@@ -76,11 +78,23 @@ class MessageViewSet(viewsets.ModelViewSet):
             if title == 'Sending Check':
                 stored = sender - models.MACHINE_REPOSITORY_1
                 first_item = Inventory.objects.filter(stored=stored)[0]
-                target_orders = Order.objects.filter(item_type=first_item).order_by('made')
+                target_orders = Order.objects.filter(item_type=first_item.item_type).order_by('made')
 
-                if len(target_orders) > 0 and self.shipment_capacity < settings['max_capacity_shipment']:
-                    target_order = target_orders[0]
-                    self.recent_order[stored] = (target_order.item_type, target_order.made)
+                if self.shipment_capacity < settings['max_capacity_shipment']:
+                    if len(target_orders) == 0:
+                        if self.waited_from[stored] is None:
+                            self.waited_from[stored] = datetime.datetime.now()
+                            return Response("Not allowed", status=204)
+
+                        if datetime.datetime.now() - self.waited_from[stored] < datetime.timedelta(seconds=10):
+                            return Response("Not allowed", status=204)
+
+                    else:
+                        target_order = target_orders[0]
+                        self.recent_order[stored] = (target_order.item_type, target_order.made)
+                        target_order.delete()
+
+                    self.waited_from[stored] = None
                     self.shipment_capacity += 1
 
                     process_message = {'sender': models.EDGE_REPOSITORY,
@@ -89,16 +103,15 @@ class MessageViewSet(viewsets.ModelViewSet):
                     requests.post(settings['edge_classification_address'] + '/api/message/', data=process_message)
                     requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
 
-                    target_order.delete()
-
                     return Response(status=201)
 
                 return Response("Not allowed", status=204)
 
             if title == 'Anomaly Occurred':
                 location = sender - models.MACHINE_REPOSITORY_1
-                new_order = Order(item_type=self.recent_order[location][0], made=self.recent_order[location][1])
-                new_order.save()
+                if self.recent_order[location] is not None:
+                    new_order = Order(item_type=self.recent_order[location][0], made=self.recent_order[location][1])
+                    new_order.save()
 
                 process_message = {'sender': models.EDGE_REPOSITORY,
                                    'title': 'Anomaly Occurred',
@@ -157,6 +170,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             if title == 'Start':
                 Inventory.objects.all().delete()
                 Order.objects.all().delete()
+                self.waited_from = [None] * 3
                 self.recent_order = [None] * 3
                 self.shipment_capacity = 0
 
