@@ -10,9 +10,7 @@ from edge_repository.settings import settings
 from . import models
 from .models import Sensory, Inventory, Order, Message, Status
 
-current_anomaly = [False] * 3
-waited_from = [None] * 3
-recent_order = [None] * 3
+experiment_type = 'SAS'
 shipment_capacity = 0
 
 # Serializer
@@ -58,7 +56,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(responses={400: "Bad request", 204: "Invalid Message Title / Invalid Message Sender / Not allowed"})
     def create(self, request, *args, **kwargs):
-        global current_anomaly, shipment_capacity, waited_from, recent_order
+        global shipment_capacity, experiment_type
         super().create(request, *args, **kwargs)
         sender = int(request.data['sender'])
         title = request.data['title']
@@ -77,29 +75,27 @@ class MessageViewSet(viewsets.ModelViewSet):
 
             if title == 'Sending Check':
                 stored = sender - models.MACHINE_REPOSITORY_1
+                if experiment_type == 'SAS':
+                    process_message = {'sender': models.EDGE_REPOSITORY,
+                                       'title': 'SAS Check',
+                                       'msg': stored}
+                    response = requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
+                    if response.status_code == 204:
+                        return Response("Not allowed", status=204)
+                    return Response(status=201)
+
                 first_item = Inventory.objects.filter(stored=stored)[0]
                 target_orders = Order.objects.filter(item_type=first_item.item_type).order_by('made')
 
-                if current_anomaly[stored]:
-                    return Response("Not allowed", status=204)
-
                 if shipment_capacity < settings['max_capacity_shipment']:
                     if len(target_orders) == 0:
-                        if waited_from[stored] is None:
-                            waited_from[stored] = datetime.datetime.now()
-                            return Response("Not allowed", status=204)
-
-                        if datetime.datetime.now() - waited_from[stored] < datetime.timedelta(seconds=100):
-                            return Response("Not allowed", status=204)
+                        return Response("Not allowed", status=204)
 
                     else:
                         target_order = target_orders[0]
-                        recent_order[stored] = (target_order.item_type, target_order.made)
                         target_order.delete()
 
-                    waited_from[stored] = None
                     shipment_capacity += 1
-
                     process_message = {'sender': models.EDGE_REPOSITORY,
                                        'title': 'Order Processed',
                                        'msg': stored}
@@ -112,11 +108,6 @@ class MessageViewSet(viewsets.ModelViewSet):
 
             if title == 'Anomaly Occurred':
                 location = sender - models.MACHINE_REPOSITORY_1
-                current_anomaly[location] = True
-                if recent_order[location] is not None:
-                    new_order = Order(item_type=recent_order[location][0], made=recent_order[location][1])
-                    new_order.save()
-
                 process_message = {'sender': models.EDGE_REPOSITORY,
                                    'title': 'Anomaly Occurred',
                                    'msg': location}
@@ -126,14 +117,6 @@ class MessageViewSet(viewsets.ModelViewSet):
 
             if title == 'Anomaly Solved':
                 location = sender - models.MACHINE_REPOSITORY_1
-                current_anomaly[location] = False
-                waited_from[location] = None
-                target_orders = Order.objects.filter(item_type=recent_order[location][0]).order_by('made')
-
-                if len(target_orders) != 0:
-                    target_order = target_orders[0]
-                    target_order.delete()
-
                 process_message = {'sender': models.EDGE_REPOSITORY,
                                    'title': 'Anomaly Solved',
                                    'msg': location}
@@ -174,10 +157,10 @@ class MessageViewSet(viewsets.ModelViewSet):
                 return Response(status=201)
 
             if title == 'Start':
+                experiment_type = request.data['msg']
+
                 Inventory.objects.all().delete()
                 Order.objects.all().delete()
-                waited_from = [None] * 3
-                recent_order = [None] * 3
                 shipment_capacity = 0
 
                 if len(Status.objects.all()) == 0:
