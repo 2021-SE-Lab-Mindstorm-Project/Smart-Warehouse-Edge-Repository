@@ -82,6 +82,13 @@ class MessageViewSet(viewsets.ModelViewSet):
                     response = requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
                     if response.status_code == 204:
                         return Response("Not allowed", status=204)
+
+                    shipment_capacity += 1
+                    process_message = {'sender': models.EDGE_REPOSITORY,
+                                       'title': 'Order Processed',
+                                       'msg': stored}
+                    requests.post(settings['edge_classification_address'] + '/api/message/', data=process_message)
+                    requests.post(settings['cloud_address'] + '/api/message/', data=process_message)
                     return Response(status=201)
 
                 first_item = Inventory.objects.filter(stored=stored)[0]
